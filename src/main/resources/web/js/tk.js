@@ -31,10 +31,15 @@ connection.onmessage = function(msg) {
     questionId = json.questionId;
   } else if (typeof json.scores === 'object') {
     console.log("seems to be a scores message");
-    var table = '';
+    var scores = [];
     Object.keys(json.scores).forEach(function(key) {
-      table += '<tr><td>' + key + '</td><td>' + json.scores[key] + '</td></tr>';
+      scores.push([json.scores[key], '<tr><td>' + key + '</td><td>' + json.scores[key] + '</td></tr>']);
     });
+    scores = scores.sort(function(a, b) {return b[0] - a[0]});
+    var table = ''
+    scores.forEach(function(element) {
+      table += element[1];
+    })
     document.getElementById('scores').innerHTML = table;
   }
 }

@@ -11,7 +11,7 @@ import java.net.InetSocketAddress;
 
 public class SimpleWebServer {
 
-  public static void main(int port) throws Exception {
+  public static void start(int port) throws Exception {
     HttpServer server = HttpServer.create(new InetSocketAddress(port), 0);
     server.createContext("/", new Handler());
     server.setExecutor(null);
