@@ -1,37 +1,108 @@
+import config
 import umundo.umundo64 as umundo
 
 from application import Application
 
-class TestReceiver(umundo.Receiver):
+class QuizGreeter(umundo.Greeter):
+    def __init__(self, client):
+        umundo.Greeter.__init__(self)
+        self._client = client
+
+    def welcome(self, pub, subStub):
+        self._client.onSubscriber(pub, subStub)
+
+    def farewell(self, pub, subStub):
+        self._client.onSubscriberLeave(pub, subStub)
+
+class QuizReceiver(umundo.Receiver):
+    def __init__(self, client):
+        umundo.Receiver.__init__(self)
+        self._client = client
+
+    def receive(self, msg):
+        self._client.dispatch(msg)
+
+class QuizClient():
     def __init__(self):
-        super().__init__()
+        umundo.Receiver.__init__(self)
+        self._initUmundo()
+        self.ui = Application(self._cleanup)
 
-    def receive(self, *args):
-        print("i")
+    def _initUmundo(self):
+        # Explicit references to umundo objects are required!
+        self._greeter = QuizGreeter(self)
+        self._receiver = QuizReceiver(self)
 
-testRcv = TestReceiver()
+        self._publisher = umundo.Publisher(config.QUESTION_CHANNEL)
+        self._publisher.setGreeter(self._greeter)
+        self._subscriber = umundo.Subscriber(config.QUESTION_CHANNEL)
+        self._subscriber.setReceiver(self._receiver)
 
-pub = umundo.Publisher("pingpong")
-sub = umundo.Subscriber("pingpong")
-sub.setReceiver(testRcv)
+        self._node = umundo.Node()
+        self._node.addPublisher(self._publisher)
+        self._node.addSubscriber(self._subscriber)
 
-node = umundo.Node()
-node.addPublisher(pub)
-node.addSubscriber(sub)
+        self._disc = umundo.Discovery(umundo.Discovery.MDNS)
+        self._disc.add(self._node)
 
-disc = umundo.Discovery(0)
-disc.add(node)
+    def _cleanup(self):
+        self._disc = None
+        self._node = None
+        self._subscriber = None
+        self._publisher = None
+        self._greeter = None
+        self._receiver = None
 
-def ping():
-    msg = umundo.Message()
-    msg.setData("ping")
-    pub.send(msg)
+    def onSubscriber(self, pub, subStub):
+        pass
+        # print(subStub.getUUID())
 
-    print("o")
+    def onSubscriberLeave(self, pub, subStub):
+        pass
 
-    app.master.after(1000, ping)
+    def dispatch(self, msg):
+        mapping = {
+            config.Message.HEARTBEAT : self.onHeartbeat,
+            config.Message.QUESTION: self.onQuestion,
+            config.Message.ANSWER: self.onAnswer,
+            config.Message.NODE_ID: self.onNodeId,
+            config.Message.SCORES: self.onScores,
+        }
 
-app = Application()
-app.master.after(1000, ping)
-app.run()
+        msgType = msg.getMeta("type")
+        if msgType in mapping:
+            mapping[msgType](msg)
+        else:
+            print("Unknown message type: ", msgType)
+
+    def onHeartbeat(self, msg):
+        pass
+
+    def onQuestion(self, msg):
+        pass
+
+    def onAnswer(self, msg):
+        pass
+
+    def onNodeId(self, msg):
+        pass
+
+    def onScores(self, msg):
+        pass
+
+    def heartbeat(self):
+        msg = umundo.Message()
+        msg.putMeta("type", config.Message.HEARTBEAT)
+        msg.setData("ping")
+
+        self._publisher.send(msg)
+        print("o")
+        print("Subscribers: ", self._publisher.waitForSubscribers(0))
+
+    def start(self):
+        self.ui.schedule(500, self.heartbeat)
+        self.ui.run()
+
+client = QuizClient()
+client.start()
 

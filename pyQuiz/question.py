@@ -1,3 +1,5 @@
+import config
+
 class Question:
     def __init__(self):
-        print("hi")
+        print(config.QUESTION_CHANNEL)
