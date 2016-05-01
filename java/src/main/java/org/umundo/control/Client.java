@@ -3,11 +3,10 @@ package org.umundo.control;
 import org.umundo.QuestionFactory;
 import org.umundo.SimpleWebServer;
 import org.umundo.WSServer;
-import org.umundo.core.Discovery;
+import org.umundo.core.*;
 import org.umundo.core.Discovery.DiscoveryType;
-import org.umundo.core.Message;
-import org.umundo.core.Node;
 import org.umundo.model.*;
+import org.umundo.s11n.ITypedGreeter;
 import org.umundo.s11n.ITypedReceiver;
 import org.umundo.s11n.TypedPublisher;
 import org.umundo.s11n.TypedSubscriber;
@@ -31,12 +30,14 @@ public class Client {
 
   private int currentQuestionId = 0;
   private ArrayList<Question> questionHistory = new ArrayList<>();
-  private final HashMap<String, Integer> scoreboard = new HashMap<>();
+  private HashMap<String, Integer> scoreboard = new HashMap<>();
 
   private String username;
   private boolean run = true;
 
   private boolean electionGoesOn = true;
+
+  private final Client self = this;
 
   public Client(int port, String username) {
     System.out.printf("Starting new client on port %d and %d, username: %s\n",
@@ -54,6 +55,7 @@ public class Client {
     subscriber = new TypedSubscriber(QUESTION_CHANNEL);
     subscriber.setReceiver(new Receiver(this));
     publisher = new TypedPublisher(QUESTION_CHANNEL);
+    publisher.setGreeter(new GameGreeter(this));
     gameNode.addPublisher(publisher);
     gameNode.addSubscriber(subscriber);
 
@@ -65,7 +67,15 @@ public class Client {
         while(true) {
           try {
             Thread.sleep(1000);
-            int count = publisher.waitForSubscribers(0);
+            int count;
+            synchronized (self) {
+              count = publisher.waitForSubscribers(0);
+              if (count == 0) {
+                disc.remove(gameNode);
+                Thread.sleep(100);
+                disc.add(gameNode);
+              }
+            }
             System.out.println("Number of subscribers: " + count);
           } catch (InterruptedException e) {
             e.printStackTrace();
@@ -105,12 +115,14 @@ public class Client {
     while(this.run) {
       try {
         Thread.sleep(10000);
-
         if (this.leader) {
-          // publish a new question if client is the leader
-          Question q = QuestionFactory.getQuestion(++currentQuestionId);
-          questionHistory.add(q);
-          publisher.send(q.get());
+          Question q;
+          synchronized (self) {
+            // publish a new question if client is the leader
+            q = QuestionFactory.getQuestion(++currentQuestionId);
+            questionHistory.add(q);
+            publisher.send(q.get());
+          }
           receivedQuestion(q);
         }
       } catch (InterruptedException e) {
@@ -118,8 +130,10 @@ public class Client {
       }
     }
     System.exit(1);
-    gameNode.removePublisher(publisher);
-    gameNode.removeSubscriber(subscriber);
+    synchronized (self) {
+      gameNode.removePublisher(publisher);
+      gameNode.removeSubscriber(subscriber);
+    }
   }
 
   public void stop() {
@@ -127,6 +141,8 @@ public class Client {
   }
 
   private void receivedQuestion(Question q) {
+    currentQuestionId = q.getQuestionId();
+    questionHistory.add(q);
     System.out.println("Received question with id " + q.getQuestionId());
     wsServer.sendQuestion(q);
   }
@@ -138,7 +154,9 @@ public class Client {
       receivedAnswer(answer);
     } else {
       System.out.println("Send answer to leader");
-      this.publisher.send(answer.get());
+      synchronized (self) {
+        this.publisher.send(answer.get());
+      }
     }
   }
 
@@ -151,10 +169,12 @@ public class Client {
         boolean run = true;
         while(run) {
           try {
-            Thread.sleep(500);
+            Thread.sleep(2000);
             if (leader) {
-              System.out.println("Leader sends heartbeat");
-              publisher.send(new Heartbeat().get());
+              synchronized (self) {
+                System.out.println("Leader sends heartbeat");
+                publisher.send(new Heartbeat().get());
+              }
             } else {
               if (client.lastHeartbeat < System.currentTimeMillis() - 1000 * 5) {
                 System.out.println("Detected no heartbeat for three seconds, start election.");
@@ -163,6 +183,7 @@ public class Client {
                 client.leaderElection();
               }
             }
+            client.wsServer.sendIsLeader(leader);
           } catch (InterruptedException e) {
             e.printStackTrace();
           }
@@ -180,8 +201,10 @@ public class Client {
         while (electionGoesOn) {
           try {
             Thread.sleep(250);
-            publisher.send(new Priority(client.priority).get());
-            System.out.println("Send my prio");
+            synchronized (self) {
+              publisher.send(new Priority(client.priority).get());
+              System.out.println("Send my prio");
+            }
           } catch (InterruptedException e) {
             e.printStackTrace();
           }
@@ -217,24 +240,26 @@ public class Client {
   private void receivedAnswer(Answer a) {
     if (this.leader) {
       System.out.printf("Received answer by %s for %d\n", a.getUsername(), a.getQuestionId());
-      if (a.getQuestionId() == currentQuestionId) {
-        // is latest question
-        Question q = questionHistory.get(questionHistory.size() - 1);
-        if (a.getAnswer() == q.getCorrectAnswer()) {
-          System.out.printf("Answer by %s for %d was correct\n", a.getUsername(), a.getQuestionId());
+      synchronized (self) {
+        if (a.getQuestionId() == currentQuestionId) {
+          // is latest question
+          Question q = questionHistory.get(questionHistory.size() - 1);
+          if (a.getAnswer() == q.getCorrectAnswer()) {
+            System.out.printf("Answer by %s for %d was correct\n", a.getUsername(), a.getQuestionId());
 
-          int lastScore = scoreboard.getOrDefault(a.getUsername(), 0);
-          scoreboard.put(a.getUsername(), lastScore + 1);
+            int lastScore = scoreboard.getOrDefault(a.getUsername(), 0);
+            scoreboard.put(a.getUsername(), lastScore + 1);
 
-          Scoreboard sb = new Scoreboard(scoreboard);
-          publisher.send(sb.get());
-          receivedScoreboard(sb);
+            Scoreboard sb = new Scoreboard(scoreboard);
+            publisher.send(sb.get());
+            receivedScoreboard(sb);
+          } else {
+            System.out.printf("Answer by %s for %d was wrong\n", a.getUsername(), a.getQuestionId());
+          }
         } else {
-          System.out.printf("Answer by %s for %d was wrong\n", a.getUsername(), a.getQuestionId());
+          // question is outdated
+          System.out.printf("Answer by %s was too late\n", a.getUsername());
         }
-      } else {
-        // question is outdated
-        System.out.printf("Answer by %s was too late\n", a.getUsername());
       }
     }
   }
@@ -247,8 +272,19 @@ public class Client {
   }
 
   private void receivedScoreboard(Scoreboard scoreboard) {
+    synchronized (self) {
+      this.scoreboard = scoreboard.getScores();
+    }
     System.out.println("Received latest scoreboard");
     wsServer.sendScoreboard(scoreboard);
+  }
+
+  private void receivedWelcome(Welcome w) {
+    if (this.leader) {
+      synchronized (self) {
+        this.scoreboard.put(w.getUsername(), this.scoreboard.getOrDefault(w.getUsername(), 0));
+      }
+    }
   }
 
   private static class Receiver implements ITypedReceiver {
@@ -268,8 +304,29 @@ public class Client {
         case "score": client.receivedScoreboard(Scoreboard.fromMessage(message)); break;
         case "heartbeat": client.receivedHeartbeat(Heartbeat.fromMessage(message)); break;
         case "priority": client.receivedPriority(Priority.fromMessage(message)); break;
+        case "welcome": client.receivedWelcome(Welcome.fromMessage(message)); break;
         default: System.err.println("Received unknown message type");
       }
+    }
+  }
+
+  private class GameGreeter implements ITypedGreeter {
+
+    private Client client;
+
+    private GameGreeter(Client client) {
+      this.client = client;
+    }
+
+    @Override
+    public void welcome(TypedPublisher pub, SubscriberStub subStub) {
+      Welcome w = new Welcome(client.getUsername());
+      pub.send(w.get());
+      client.receivedWelcome(w);
+    }
+
+    @Override
+    public void farewell(TypedPublisher pub, SubscriberStub subStub) {
     }
   }
 

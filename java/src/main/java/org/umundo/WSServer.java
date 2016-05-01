@@ -40,6 +40,12 @@ public class WSServer extends WebSocketServer {
     }
   }
 
+  public void sendIsLeader(boolean isLeader) {
+    if (webSocket != null) {
+      webSocket.send("{\"leader\": " +  isLeader + "}");
+    }
+  }
+
   @Override
   public void onOpen(WebSocket webSocket, ClientHandshake clientHandshake) {
     System.out.println("Someone connected");

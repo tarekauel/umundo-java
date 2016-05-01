@@ -1,3 +1,4 @@
+var timeToAnswer = 0;
 var questionId = 0;
 var lastSendId = 0;
 var connection = new WebSocket('ws://localhost:' + (parseInt(location.port) + 1));
@@ -29,6 +30,14 @@ connection.onmessage = function(msg) {
     document.getElementById('C').innerHTML = json.answerC;
     document.getElementById('D').innerHTML = json.answerD;
     questionId = json.questionId;
+    timeToAnswer = 300;
+  } else if (typeof json.leader === 'boolean') {
+    console.log("seems to be a leader information")
+    if (json.leader) {
+      document.getElementById("leader").innerHTML = "I'm the leader";
+    } else {
+      document.getElementById("leader").innerHTML =  "I'm not the leader";
+    }
   } else if (typeof json.scores === 'object') {
     console.log("seems to be a scores message");
     var scores = [];
@@ -57,3 +66,15 @@ btn.forEach(function(button) {
     }
   })
 });
+
+var countdownDiv = document.getElementById('countdown');
+
+var countdown = function() {
+  if (timeToAnswer > 0) {
+    timeToAnswer--;
+    countdownDiv.innerHTML = 'You still have ' + (parseInt(timeToAnswer / 10)) + '.' + (timeToAnswer % 10) +
+      ' second to answer';
+  }
+}
+
+setInterval(countdown, 100);
