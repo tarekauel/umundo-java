@@ -2,6 +2,9 @@ import config
 import umundo.umundo64 as umundo
 
 from application import Application
+from leader import Leader
+from scoreboard import Scoreboard
+from question import Question
 
 class QuizGreeter(umundo.Greeter):
     def __init__(self, client):
@@ -24,9 +27,10 @@ class QuizReceiver(umundo.Receiver):
 
 class QuizClient():
     def __init__(self):
-        umundo.Receiver.__init__(self)
         self._initUmundo()
-        self.ui = Application(self._cleanup)
+        self.ui = Application(self._onBtnPress, self._cleanup)
+        self._leader = Leader(self)
+        self._scoreboard = Scoreboard(self)
 
     def _initUmundo(self):
         # Explicit references to umundo objects are required!
@@ -53,19 +57,39 @@ class QuizClient():
         self._greeter = None
         self._receiver = None
 
+    def _onBtnPress(self, btn):
+        print(btn)
+
+    def send(self, kvMap):
+        print("Send message " + kvMap["type"])
+        msg = umundo.Message()
+
+        for k in kvMap:
+            msg.putMeta(str(k), str(kvMap[k]))
+
+        self._publisher.send(msg)
+
+    def hasSubscribers(self):
+        return self._publisher.waitForSubscribers(0) > 0
+
     def onSubscriber(self, pub, subStub):
-        pass
-        # print(subStub.getUUID())
+        self.send({
+            "type": config.Message.WELCOME,
+            "username": self.ui.username,
+        })
 
     def onSubscriberLeave(self, pub, subStub):
         pass
 
     def dispatch(self, msg):
+        print ("Dispatch " + msg.getMeta("type"))
+
         mapping = {
-            config.Message.HEARTBEAT : self.onHeartbeat,
+            config.Message.HEARTBEAT: self._leader.dispatchHeartbeat,
+            config.Message.PRIORITY: self._leader.dispatchPriority,
+            config.Message.WELCOME: self._scoreboard.dispatchWelcome,
             config.Message.QUESTION: self.onQuestion,
             config.Message.ANSWER: self.onAnswer,
-            config.Message.NODE_ID: self.onNodeId,
             config.Message.SCORES: self.onScores,
         }
 
@@ -75,32 +99,18 @@ class QuizClient():
         else:
             print("Unknown message type: ", msgType)
 
-    def onHeartbeat(self, msg):
-        pass
-
     def onQuestion(self, msg):
-        pass
+        self._activeQuestion = Question.fromMsg(msg)
+        self.ui.updateQuestion(self._activeQuestion)
 
     def onAnswer(self, msg):
-        pass
-
-    def onNodeId(self, msg):
         pass
 
     def onScores(self, msg):
         pass
 
-    def heartbeat(self):
-        msg = umundo.Message()
-        msg.putMeta("type", config.Message.HEARTBEAT)
-        msg.setData("ping")
-
-        self._publisher.send(msg)
-        print("o")
-        print("Subscribers: ", self._publisher.waitForSubscribers(0))
-
     def start(self):
-        self.ui.schedule(500, self.heartbeat)
+        self.ui.schedule(500, self._leader.tick)
         self.ui.run()
 
 client = QuizClient()
