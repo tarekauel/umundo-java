@@ -49,11 +49,10 @@ public class Client {
     gameNode = new Node();
     disc.add(gameNode);
 
-    Receiver r = new Receiver(this);
-
     // channel for sending and receiving questions
     String QUESTION_CHANNEL = "GAME_CHANNEL";
-    subscriber = new TypedSubscriber(QUESTION_CHANNEL, r);
+    subscriber = new TypedSubscriber(QUESTION_CHANNEL);
+    subscriber.setReceiver(new Receiver(this));
     publisher = new TypedPublisher(QUESTION_CHANNEL);
     gameNode.addPublisher(publisher);
     gameNode.addSubscriber(subscriber);

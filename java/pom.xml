@@ -45,13 +45,6 @@
         </plugins>
     </build>
 
-    <repositories>
-        <repository>
-            <id>tu.darmstadt.umundo</id>
-            <name>uMundo at TK</name>
-            <url>http://umundo.tk.informatik.tu-darmstadt.de/maven2/</url>
-        </repository>
-    </repositories>
     <dependencies>
         <dependency>
             <groupId>commons-io</groupId>
@@ -76,8 +69,10 @@
         </dependency>
         <dependency>
             <groupId>org.umundo</groupId>
-            <artifactId>umundocore</artifactId>
-            <version>0.4.4</version>
+            <artifactId>core</artifactId>
+            <version>1.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/lib/umundo.jar</systemPath>
         </dependency>
     </dependencies>
 
