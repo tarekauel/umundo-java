@@ -5,7 +5,7 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>tud</groupId>
-    <artifactId>umundo-client</artifactId>
+    <artifactId>umundo-game</artifactId>
     <version>1.0-SNAPSHOT</version>
 
     <build>
@@ -45,6 +45,14 @@
         </plugins>
     </build>
 
+    <repositories>
+        <repository>
+            <id>project.local</id>
+            <name>project</name>
+            <url>file:${project.basedir}/repo</url>
+        </repository>
+    </repositories>
+
     <dependencies>
         <dependency>
             <groupId>commons-io</groupId>
@@ -75,8 +83,6 @@
             <groupId>org.umundo</groupId>
             <artifactId>core</artifactId>
             <version>1.0</version>
-            <scope>system</scope>
-            <systemPath>${project.basedir}/lib/umundo.jar</systemPath>
         </dependency>
     </dependencies>
 
