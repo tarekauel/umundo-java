@@ -1,8 +1,10 @@
 var timeToAnswer = 0;
 var questionId = 0;
+var correctAnswer = 0;
 var lastSendId = 0;
 var connection = new WebSocket('ws://localhost:' + (parseInt(location.port) + 1));
 var username = "";
+
 connection.onopen = function() {
   console.log('connection established');
 }
@@ -29,14 +31,19 @@ connection.onmessage = function(msg) {
     document.getElementById('B').innerHTML = json.answerB;
     document.getElementById('C').innerHTML = json.answerC;
     document.getElementById('D').innerHTML = json.answerD;
+    document.getElementById('A').className = "btn btn-default";
+    document.getElementById('B').className = "btn btn-default";
+    document.getElementById('C').className = "btn btn-default";
+    document.getElementById('D').className = "btn btn-default";
     questionId = json.questionId;
+    correctAnswer = json.correctAnswer;
     timeToAnswer = 300;
   } else if (typeof json.leader === 'boolean') {
     console.log("seems to be a leader information")
     if (json.leader) {
-      document.getElementById("leader").innerHTML = "I'm the leader";
+      document.getElementById("leader").innerHTML = "Leader: Yes";
     } else {
-      document.getElementById("leader").innerHTML =  "I'm not the leader";
+      document.getElementById("leader").innerHTML =  "Leader: No";
     }
   } else if (typeof json.scores === 'object') {
     console.log("seems to be a scores message");
@@ -64,6 +71,12 @@ btn.forEach(function(button) {
       connection.send(JSON.stringify(answerJson));
       lastSendId = questionId;
       document.getElementById(button).blur();
+      if (answer == correctAnswer) {
+        document.getElementById(button).className = "btn btn-success";
+      } else {
+        document.getElementById(button).className = "btn btn-danger";
+        document.getElementById(btn[correctAnswer]).className = "btn btn-success";
+      }
     }
   })
 });
