@@ -63,6 +63,7 @@ btn.forEach(function(button) {
       console.log(answerJson);
       connection.send(JSON.stringify(answerJson));
       lastSendId = questionId;
+      document.getElementById(button).blur();
     }
   })
 });
