@@ -23,6 +23,9 @@ class Question:
     def getQuestion(self):
         return self._q["question"]
 
+    def getQuestionId(self):
+        return self._qid
+
     def getAnswerA(self):
         return self._q["A"]
 

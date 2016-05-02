@@ -4,6 +4,7 @@ import umundo.umundo64 as umundo
 from application import Application
 from leader import Leader
 from scoreboard import Scoreboard
+from answer import Answer
 from question import Question
 
 class QuizGreeter(umundo.Greeter):
@@ -32,15 +33,17 @@ class QuizClient():
         self._leader = Leader(self)
         self._scoreboard = Scoreboard(self)
 
+        # After(!) everything is initialized => register handlers
+        self._publisher.setGreeter(self._greeter)
+        self._subscriber.setReceiver(self._receiver)
+
     def _initUmundo(self):
         # Explicit references to umundo objects are required!
         self._greeter = QuizGreeter(self)
         self._receiver = QuizReceiver(self)
 
         self._publisher = umundo.Publisher(config.QUESTION_CHANNEL)
-        self._publisher.setGreeter(self._greeter)
         self._subscriber = umundo.Subscriber(config.QUESTION_CHANNEL)
-        self._subscriber.setReceiver(self._receiver)
 
         self._node = umundo.Node()
         self._node.addPublisher(self._publisher)
@@ -58,7 +61,19 @@ class QuizClient():
         self._receiver = None
 
     def _onBtnPress(self, btn):
-        print(btn)
+        mapping = {
+            Application.BTN_A: 0,
+            Application.BTN_B: 1,
+            Application.BTN_C: 2,
+            Application.BTN_D: 3,
+        }
+
+        self.ui.highlightBtn(btn)
+
+        if self._leader.isLeader():
+            pass
+        else:
+            Answer(self, self._activeQuestion, mapping[btn]).send()
 
     def send(self, kvMap):
         print("Send message " + kvMap["type"])
@@ -115,4 +130,3 @@ class QuizClient():
 
 client = QuizClient()
 client.start()
-
