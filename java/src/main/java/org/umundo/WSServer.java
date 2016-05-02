@@ -1,6 +1,7 @@
 package org.umundo;
 
 import com.google.gson.Gson;
+import org.apache.log4j.Logger;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
@@ -13,6 +14,8 @@ import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
 
 public class WSServer extends WebSocketServer {
+
+  private static Logger log = Logger.getLogger(WSServer.class.getName());
 
   private Client client;
   private Gson gson = new Gson();
@@ -29,7 +32,7 @@ public class WSServer extends WebSocketServer {
     // check whether someone connected already, else just ignore the question
     if (webSocket != null) {
       webSocket.send(gson.toJson(q));
-      System.out.println("send question");
+      log.info("send question");
     }
   }
 
@@ -48,7 +51,7 @@ public class WSServer extends WebSocketServer {
 
   @Override
   public void onOpen(WebSocket webSocket, ClientHandshake clientHandshake) {
-    System.out.println("Someone connected");
+    log.info("Someone connected");
     webSocket.send("{\"username\": \"" + client.getUsername() + "\" }");
     this.webSocket = webSocket;
   }
@@ -63,7 +66,7 @@ public class WSServer extends WebSocketServer {
 
   @Override
   public void onMessage(WebSocket webSocket, String s) {
-    System.out.println("received message from ui: " + s);
+    log.info("received message from ui: " + s);
     client.answerFromUser(gson.fromJson(s, Answer.class));
   }
 
