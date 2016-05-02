@@ -117,7 +117,7 @@ public class Client {
   public void run() {
     while(this.run) {
       try {
-        Thread.sleep(10000);
+        Thread.sleep(30000);
         if (this.leader) {
           Question q;
           synchronized (self) {
