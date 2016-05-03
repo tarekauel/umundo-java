@@ -67,7 +67,7 @@ public class Client {
     (new Thread() {
       @Override
       public void run() {
-        while(true) {
+        while(self.run) {
           try {
             Thread.sleep(1000);
             int count;
@@ -132,15 +132,19 @@ public class Client {
         e.printStackTrace();
       }
     }
-    System.exit(1);
     synchronized (self) {
+
       gameNode.removePublisher(publisher);
       gameNode.removeSubscriber(subscriber);
+      System.exit(0);
     }
   }
 
-  public void stop() {
+  public void exit() {
+    log.info("Going to quit");
     this.run = false;
+    this.leader = false;
+    this.electionGoesOn = false;
   }
 
   private void receivedQuestion(Question q) {
@@ -170,7 +174,7 @@ public class Client {
       @Override
       public void run() {
         boolean run = true;
-        while(run) {
+        while(run && self.run) {
           try {
             Thread.sleep(2000);
             if (leader) {
@@ -207,7 +211,7 @@ public class Client {
     (new Thread() {
       @Override
       public void run() {
-        while (electionGoesOn) {
+        while (electionGoesOn && self.run) {
           try {
             Thread.sleep(250);
             synchronized (self) {

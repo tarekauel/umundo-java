@@ -1,6 +1,9 @@
 package org.umundo;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.apache.log4j.Logger;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
@@ -67,7 +70,12 @@ public class WSServer extends WebSocketServer {
   @Override
   public void onMessage(WebSocket webSocket, String s) {
     log.info("received message from ui: " + s);
-    client.answerFromUser(gson.fromJson(s, Answer.class));
+    JsonObject jo = new JsonParser().parse(s).getAsJsonObject();
+    if(jo.has("exit")) {
+      client.exit();
+    } else {
+      client.answerFromUser(gson.fromJson(s, Answer.class));
+    }
   }
 
   @Override

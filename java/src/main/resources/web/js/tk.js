@@ -92,3 +92,7 @@ var countdown = function() {
 }
 
 setInterval(countdown, 100);
+
+document.getElementById("exit").addEventListener("click", function() {
+  connection.send(JSON.stringify({"exit": true}));
+});
