@@ -6,8 +6,12 @@ class Scoreboard:
         }
 
     def dispatchWelcome(self, msg):
-        print("DEBUG_WELCOME_I")
         username = msg.getMeta("username")
+
         if username not in self._scores:
             self._scores[username] = 0
-        print("DEBUG_WELCOME_II")
+
+    def dispatchScores(self, msg):
+        scores = dict((user, score) for (user, score) in msg.getMetaKeys() if user != 'type' and not user.startswith('um.'))
+        print(scores)
+        self._client.ui.updateScores(scores)

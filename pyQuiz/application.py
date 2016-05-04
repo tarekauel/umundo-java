@@ -14,6 +14,7 @@ class Application:
         self.master = Tk()
         #self.username = self._usernamePrompt()
         self.username = "Python client" + str(random.randint(1, 10000))
+        self.master.wm_title("Quiz " + self.username)
         self._btnDefaultStyle = {
             "background": "#D9D9D9",
             "activebackground": "SpringGreen3",
@@ -26,7 +27,7 @@ class Application:
         }
         self._initUiLayout()
         self._btnPressCb = btnPressCb
-        #self.master.geometry("{:d}x{:d}+{:d}+{:d}".format(450, 200, 20, 30))
+        self.master.geometry("{:d}x{:d}+{:d}+{:d}".format(750, 300, 20, 30))
         self.master.protocol("WM_DELETE_WINDOW", lambda: self._quit(beforeShutdownCb))
 
     def _usernamePrompt(self):
@@ -34,8 +35,8 @@ class Application:
         return dialog.result
 
     def _initUiLayout(self):
-        self._qLabel = Label(self.master, text="Searching for players...")
-        self._qLabel.grid(row=0, columnspan=2, sticky=N+S)
+        self._qLabel = Label(self.master, text="Searching for players...", font=("Helvetica", 16), wraplength=700)
+        self._qLabel.grid(row=0, columnspan=2, sticky=W+E+N+S)
 
         self._buttons = {}
 
@@ -55,8 +56,11 @@ class Application:
         self._btnD.grid(row=2, column=1, sticky=W+E+N+S, ipady=10)
         self._buttons[self.BTN_D] = self._btnD
 
+        self._scores = LabelFrame(self.master, text="Scores", padx=5, pady=5)
+        self._scores.grid(row=3, columnspan=2, sticky=W+E)
+
         self._statusBar = StatusBar(self.master)
-        self._statusBar.grid(row=3, columnspan=2, sticky=W+E)
+        self._statusBar.grid(row=4, columnspan=2, sticky=W+E)
         self._statusBar.set("Awaiting question...")
 
         ## Grid configuration
@@ -90,6 +94,16 @@ class Application:
         self._btnC.config(text=question.getAnswerC(), **self._btnDefaultStyle)
         self._btnD.config(text=question.getAnswerD(), **self._btnDefaultStyle)
         self._setTimer(int(question.getTimeout()) / 1000)
+
+    def updateScores(self, scores):
+        for widget in self._scores.winfo_children():
+            widget.destroy()
+
+        row = 0
+        for user in scores:
+            Label(self._scores, text=user, justify=LEFT, anchor=W).grid(row=row, column=0, sticky=W+E)
+            Label(self._scores, text=scores[user], justify=LEFT, anchor=W, font=("Helvetica", 10, "bold")).grid(row=row, column=1, padx=80)
+            row += 1
 
     def schedule(self, delayMs, fn, immediateExec=True):
         self.master.after(0 if immediateExec else delayMs, fn)

@@ -10,6 +10,7 @@ class Leader:
         self._questions = Questions()
         self._questions.load()
 
+        self._collectedAnswers = {}
         self._priority = util.mtime()
         self._lastHeartbeatSeen = util.mtime()
         self._minPrioritySeen = sys.maxsize
@@ -29,10 +30,15 @@ class Leader:
     def _resetPriority(self):
         self._minPrioritySeen = sys.maxsize
 
+    def _processAnswers(self):
+        print(self._collectedAnswers)
+        correctAnswer = self._client.activeQuestion.getCorrectAnswer()
+        print({k: v for k, v in self._collectedAnswers.items() if v == correctAnswer})
+        self._collectedAnswers = {}
+
     def _publishQuestion(self):
-        if self._lastQuestionSend + config.QUESTION_TIME_MS < util.mtime():
-            self._questions.random().publish(self._client)
-            self._lastQuestionSend = util.mtime()
+        self._questions.random().publish(self._client)
+        self._lastQuestionSend = util.mtime()
 
     def isLeader(self):
         return self._lastHeartbeatSeen < util.mtime() - config.TAKEOVER_TIMEOUT_MS and \
@@ -46,14 +52,25 @@ class Leader:
         self._resetPriority()
         self._lastHeartbeatSeen = util.mtime()
 
+    def dispatchAnswer(self, msg):
+        activeQuestionId = int(self._client.activeQuestion.getQuestionId())
+        answerQuestionId = int(msg.getMeta("questionId"))
+
+        if (answerQuestionId == activeQuestionId and self.isLeader()):
+            self._collectedAnswers[msg.getMeta("username")] = msg.getMeta("answer")
+
     def tick(self):
         if not self._client.hasSubscribers():
+            self._lastHeartbeatSeen = util.mtime()
+            self._minPrioritySeen = sys.maxsize
             return
 
         if self.isLeader():
             self._resetPriority()
             self._sendHeartbeat()
-            self._publishQuestion()
+
+            if self._lastQuestionSend + config.QUESTION_TIME_MS < util.mtime():
+                self._processAnswers()
+                self._publishQuestion()
         elif self._lastHeartbeatSeen < util.mtime() - config.ELECTION_TIMEOUT_MS:
             self._sendPriority()
-

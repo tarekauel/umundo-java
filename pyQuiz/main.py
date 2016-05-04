@@ -67,25 +67,33 @@ class QuizClient():
             Application.BTN_C: 2,
             Application.BTN_D: 3,
         }
+        answer = Answer(self.ui, self.activeQuestion, mapping[btn])
 
         self.ui.highlightBtn(btn)
 
         if self._leader.isLeader():
-            pass
+            self._leader.dispatchAnswer(self._toMsg(answer.toDict()))
         else:
-            Answer(self, self._activeQuestion, mapping[btn]).send()
+            self.send(answer.toDict())
 
-    def send(self, kvMap):
-        print("Send message " + kvMap["type"])
+    def _toMsg(self, kvMap):
         msg = umundo.Message()
 
         for k in kvMap:
             msg.putMeta(str(k), str(kvMap[k]))
 
-        self._publisher.send(msg)
+        return msg
+
+    def send(self, kvMap):
+        print("Send message " + kvMap["type"])
+        self._publisher.send(self._toMsg(kvMap))
 
     def hasSubscribers(self):
         return self._publisher.waitForSubscribers(0) > 0
+
+    def updateQuestion(self, question):
+        self.activeQuestion = question
+        self.ui.updateQuestion(self.activeQuestion)
 
     def onSubscriber(self, pub, subStub):
         self.send({
@@ -102,10 +110,10 @@ class QuizClient():
         mapping = {
             config.Message.HEARTBEAT: self._leader.dispatchHeartbeat,
             config.Message.PRIORITY: self._leader.dispatchPriority,
+            config.Message.ANSWER: self._leader.dispatchAnswer,
             config.Message.WELCOME: self._scoreboard.dispatchWelcome,
+            config.Message.SCORES: self._scoreboard.dispatchScores,
             config.Message.QUESTION: self.onQuestion,
-            config.Message.ANSWER: self.onAnswer,
-            config.Message.SCORES: self.onScores,
         }
 
         msgType = msg.getMeta("type")
@@ -115,14 +123,7 @@ class QuizClient():
             print("Unknown message type: ", msgType)
 
     def onQuestion(self, msg):
-        self._activeQuestion = Question.fromMsg(msg)
-        self.ui.updateQuestion(self._activeQuestion)
-
-    def onAnswer(self, msg):
-        pass
-
-    def onScores(self, msg):
-        pass
+        self.updateQuestion(Question.fromMsg(msg))
 
     def start(self):
         self.ui.schedule(500, self._leader.tick)

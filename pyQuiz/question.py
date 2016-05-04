@@ -15,10 +15,10 @@ class Question:
             "answerB": self._q["B"],
             "answerC": self._q["C"],
             "answerD": self._q["D"],
-            "correctAnswer": 1, # for compatibility,
+            "correctAnswer": self._q["correctAnswer"],
             "timeout": self._t,
         })
-        client.ui.updateQuestion(self)
+        client.updateQuestion(self)
 
     def getQuestion(self):
         return self._q["question"]
@@ -37,6 +37,9 @@ class Question:
 
     def getAnswerD(self):
         return self._q["D"]
+
+    def getCorrectAnswer(self):
+        return self._q["correctAnswer"]
 
     def getTimeout(self):
         return self._t
