@@ -5,6 +5,10 @@ from ui.dialog import InputDialog
 from tkinter import *
 
 class Application:
+    """
+    The GUI (view) of the application.
+    """
+
     BTN_A = "A"
     BTN_B = "B"
     BTN_C = "C"
@@ -93,12 +97,24 @@ class Application:
         self.master.destroy()
 
     def highlightBtn(self, btn_id_correct, btn_id_incorrect=None):
+        """
+        Highlights the answer buttons.
+
+        btn_id_correct - This button will be highlighted in green
+        btn_id_incorrect - If given, the button will be highlighted in red
+        """
         if btn_id_incorrect != None:
             self._buttons[btn_id_incorrect].config(**self._btnIncorrectStyle)
 
         self._buttons[btn_id_correct].config(**self._btnCorrectStyle)
 
     def updateQuestion(self, question):
+        """
+        Updates the question and answer labels, according to the new question.
+        Also resets the button style.
+
+        question -- The new question to be displayed in the GUI
+        """
         self._qLabel.config(text=question.getQuestion())
         self._btnA.config(text=question.getAnswerA(), **self._btnDefaultStyle)
         self._btnB.config(text=question.getAnswerB(), **self._btnDefaultStyle)
@@ -107,6 +123,11 @@ class Application:
         self._setTimer(int(question.getTimeout()) / 1000)
 
     def updateScores(self, scores):
+        """
+        Updates the score table.
+
+        scores -- A key-value dictonary consisting of user => score mappings.
+        """
         for widget in self._scores.winfo_children():
             widget.destroy()
 
@@ -117,8 +138,16 @@ class Application:
             row += 1
 
     def schedule(self, delayMs, fn, immediateExec=True):
+        """
+        Registers a callback which will be called periodicaly from inside the tkinter event loop.
+
+        delayMs -- The interval in which the callback will be called (in milliseconds)
+        fn -- The callback itself. No arguments are passed
+        immediateExec -- Whether to make the first call to the callback immediately (without delay)
+        """
         self.master.after(0 if immediateExec else delayMs, fn)
         self.master.after(0 if immediateExec else delayMs, lambda: self.schedule(delayMs, fn, False))
 
     def run(self):
+        """Starts the tkinter main event loop"""
         self.master.mainloop()

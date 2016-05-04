@@ -1,5 +1,6 @@
 from tkinter import Frame, Label, E, X, SUNKEN
 
+# http://effbot.org/tkinterbook/tkinter-application-windows.htm
 class StatusBar(Frame):
     def __init__(self, master):
         Frame.__init__(self, master)

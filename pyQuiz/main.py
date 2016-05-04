@@ -13,9 +13,11 @@ class QuizGreeter(umundo.Greeter):
         self._client = client
 
     def welcome(self, pub, subStub):
+        """Gets called by umundo whenever a new subscriber is participating."""
         self._client.onSubscriber(pub, subStub)
 
     def farewell(self, pub, subStub):
+        """Gets called by umundo whenever a node is leaving (or unsubscribes)."""
         self._client.onSubscriberLeave(pub, subStub)
 
 class QuizReceiver(umundo.Receiver):
@@ -24,9 +26,16 @@ class QuizReceiver(umundo.Receiver):
         self._client = client
 
     def receive(self, msg):
+        """Gets called by umundo whenever a message to a subscribed channel is received."""
         self._client.dispatch(msg)
 
 class QuizClient():
+    """
+    The client represents the application itself and controls the changes to the
+    view, as propagated by the models.
+    It also reacts to user events.
+    """
+
     def __init__(self):
         self.ui = Application(self._onBtnPress, self._cleanup)
         self.activeQuestion = None
@@ -88,7 +97,14 @@ class QuizClient():
         return msg
 
     def send(self, kvMap, dispatchToSelf=False):
-        print("Send message " + kvMap["type"])
+        """
+        Expects a dictonary which is then serialized and published as umundo message.
+
+        kvMap -- The dictonary key-value pairs. Only string keys and string
+            values are allowed. Each pair is attached as meta data to the message.
+        dispatchToSelf -- Whether to simulate the receiving of the sent message.
+        """
+        # print("Send message " + kvMap["type"])
         message = self._toMsg(kvMap)
         self._publisher.send(message)
 
@@ -96,14 +112,14 @@ class QuizClient():
             self.dispatch(message)
 
     def hasSubscribers(self):
+        """Whether there are any subscribers (players) besides ourselves."""
         return self._publisher.waitForSubscribers(0) > 0
 
-    def updateQuestion(self, question):
-        self._answerLocked = False
-        self.activeQuestion = question
-        self.ui.updateQuestion(self.activeQuestion)
-
     def onSubscriber(self, pub, subStub):
+        """
+        Gets called whenever a new player is participating.
+        We respond via a welcome message to announce him our username.
+        """
         self.send({
             "type": config.Message.WELCOME,
             "username": self.ui.username,
@@ -112,7 +128,17 @@ class QuizClient():
     def onSubscriberLeave(self, pub, subStub):
         pass
 
+    def onQuestion(self, msg):
+        """
+        Gets called when a new question is received.
+        The received question is then displayed in the GUI.
+        """
+        self._answerLocked = False
+        self.activeQuestion = Question.fromMsg(msg)
+        self.ui.updateQuestion(self.activeQuestion)
+
     def dispatch(self, msg):
+        """Delegate incoming messages to the appropriate handler functions"""
         # print ("Dispatch " + msg.getMeta("type"))
 
         mapping = {
@@ -130,10 +156,8 @@ class QuizClient():
         else:
             print("Unknown message type: ", msgType)
 
-    def onQuestion(self, msg):
-        self.updateQuestion(Question.fromMsg(msg))
-
     def start(self):
+        """Starts the eventloop of the GUI"""
         self.ui.schedule(500, self._leader.tick)
         self.ui.run()
 

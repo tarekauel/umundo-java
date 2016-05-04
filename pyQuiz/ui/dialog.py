@@ -1,6 +1,7 @@
 from tkinter import *
 from tkinter import messagebox
 
+# http://effbot.org/tkinterbook/tkinter-dialog-windows.htm
 class Dialog(Toplevel):
     def __init__(self, parent, title = None):
 

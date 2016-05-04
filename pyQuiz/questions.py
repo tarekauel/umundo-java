@@ -5,11 +5,16 @@ from csv import DictReader
 from question import Question
 
 class Questions:
+    """A class to hold a list of questions in memory"""
+
     def __init__(self, filename='assets/questions.csv'):
         self.csvpath = filename
         self._questions = None
 
     def load(self):
+        """
+        Reads questions from the CSV file and store them in memory.
+        """
         if self._questions is None:
             self._questions = []
             order = ["A", "B", "C", "D"]
@@ -33,5 +38,6 @@ class Questions:
         return self._questions
 
     def random(self):
+        """Returns a random question. load() needs to be called first."""
         i = random.randrange(0, len(self._questions))
         return Question(self._questions[i], i)
