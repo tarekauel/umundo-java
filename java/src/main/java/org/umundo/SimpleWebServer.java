@@ -18,6 +18,7 @@ public class SimpleWebServer {
     server.start();
   }
 
+  // Simple web server for serving files from the class resources
   private static class Handler implements HttpHandler {
     @Override
     public void handle(HttpExchange t) throws IOException {
