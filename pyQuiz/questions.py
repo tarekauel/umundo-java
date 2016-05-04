@@ -34,4 +34,4 @@ class Questions:
 
     def random(self):
         i = random.randrange(0, len(self._questions))
-        return Question(self._questions[i], i, config.QUESTION_TIME_MS)
+        return Question(self._questions[i], i)

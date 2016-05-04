@@ -1,24 +1,9 @@
 import config
 
 class Question:
-    def __init__(self, question, question_id, timeout):
+    def __init__(self, question, question_id):
         self._q = question
         self._qid = question_id
-        self._t = timeout
-
-    def publish(self, client):
-        client.send({
-            "type": config.Message.QUESTION,
-            "id": self._qid,
-            "question": self._q["question"],
-            "answerA": self._q["A"],
-            "answerB": self._q["B"],
-            "answerC": self._q["C"],
-            "answerD": self._q["D"],
-            "correctAnswer": self._q["correctAnswer"],
-            "timeout": self._t,
-        })
-        client.updateQuestion(self)
 
     def getQuestion(self):
         return self._q["question"]
@@ -42,7 +27,20 @@ class Question:
         return self._q["correctAnswer"]
 
     def getTimeout(self):
-        return self._t
+        return config.QUESTION_TIME_MS
+
+    def toDict(self):
+        return {
+            "type": config.Message.QUESTION,
+            "id": self._qid,
+            "question": self._q["question"],
+            "answerA": self._q["A"],
+            "answerB": self._q["B"],
+            "answerC": self._q["C"],
+            "answerD": self._q["D"],
+            "correctAnswer": self._q["correctAnswer"],
+            "timeout": config.QUESTION_TIME_MS,
+        }
 
     def fromMsg(msg):
         return Question({
@@ -51,5 +49,6 @@ class Question:
             "B": msg.getMeta("answerB"),
             "C": msg.getMeta("answerC"),
             "D": msg.getMeta("answerD"),
-        }, msg.getMeta("id"), msg.getMeta("timeout"))
+            "correctAnswer": msg.getMeta("correctAnswer"),
+        }, msg.getMeta("id"))
 

@@ -7,11 +7,10 @@ class Answer:
         self._aid = answer_id
 
     def toDict(self):
-        message = {
+        return {
             "type": config.Message.ANSWER,
             "username": self._ui.username,
             "questionId": self._q.getQuestionId(),
             "answer": self._aid,
         }
-        return message
 

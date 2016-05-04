@@ -28,10 +28,12 @@ class QuizReceiver(umundo.Receiver):
 
 class QuizClient():
     def __init__(self):
-        self._initUmundo()
         self.ui = Application(self._onBtnPress, self._cleanup)
-        self._leader = Leader(self)
+        self.activeQuestion = None
+        self._answerLocked = True
+        self._initUmundo()
         self._scoreboard = Scoreboard(self)
+        self._leader = Leader(self, self._scoreboard)
 
         # After(!) everything is initialized => register handlers
         self._publisher.setGreeter(self._greeter)
@@ -60,21 +62,22 @@ class QuizClient():
         self._greeter = None
         self._receiver = None
 
-    def _onBtnPress(self, btn):
+    def _onBtnPress(self, pressedBtn):
+        if self._answerLocked:
+            return
+
         mapping = {
             Application.BTN_A: 0,
             Application.BTN_B: 1,
             Application.BTN_C: 2,
             Application.BTN_D: 3,
         }
-        answer = Answer(self.ui, self.activeQuestion, mapping[btn])
+        answer = Answer(self.ui, self.activeQuestion, mapping[pressedBtn])
+        correctBtn = next(k for k,v in mapping.items() if v == int(self.activeQuestion.getCorrectAnswer()))
 
-        self.ui.highlightBtn(btn)
-
-        if self._leader.isLeader():
-            self._leader.dispatchAnswer(self._toMsg(answer.toDict()))
-        else:
-            self.send(answer.toDict())
+        self.ui.highlightBtn(correctBtn, None if pressedBtn == correctBtn else pressedBtn)
+        self._answerLocked = True
+        self.send(answer.toDict(), True)
 
     def _toMsg(self, kvMap):
         msg = umundo.Message()
@@ -84,14 +87,19 @@ class QuizClient():
 
         return msg
 
-    def send(self, kvMap):
+    def send(self, kvMap, dispatchToSelf=False):
         print("Send message " + kvMap["type"])
-        self._publisher.send(self._toMsg(kvMap))
+        message = self._toMsg(kvMap)
+        self._publisher.send(message)
+
+        if dispatchToSelf:
+            self.dispatch(message)
 
     def hasSubscribers(self):
         return self._publisher.waitForSubscribers(0) > 0
 
     def updateQuestion(self, question):
+        self._answerLocked = False
         self.activeQuestion = question
         self.ui.updateQuestion(self.activeQuestion)
 
@@ -105,7 +113,7 @@ class QuizClient():
         pass
 
     def dispatch(self, msg):
-        print ("Dispatch " + msg.getMeta("type"))
+        # print ("Dispatch " + msg.getMeta("type"))
 
         mapping = {
             config.Message.HEARTBEAT: self._leader.dispatchHeartbeat,

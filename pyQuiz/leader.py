@@ -5,8 +5,9 @@ import util
 from questions import Questions
 
 class Leader:
-    def __init__(self, client):
+    def __init__(self, client, scoreboard):
         self._client = client
+        self._scoreboard = scoreboard
         self._questions = Questions()
         self._questions.load()
 
@@ -31,13 +32,17 @@ class Leader:
         self._minPrioritySeen = sys.maxsize
 
     def _processAnswers(self):
-        print(self._collectedAnswers)
-        correctAnswer = self._client.activeQuestion.getCorrectAnswer()
-        print({k: v for k, v in self._collectedAnswers.items() if v == correctAnswer})
-        self._collectedAnswers = {}
+        if self._client.activeQuestion != None:
+            correctAnswer = self._client.activeQuestion.getCorrectAnswer()
+            correctAnswers = {k: v for k, v in self._collectedAnswers.items() if int(v) == int(correctAnswer)}
+            self._scoreboard.deltaUpdate(correctAnswers)
+            self._collectedAnswers = {}
+
+        self._client.send(self._scoreboard.toDict(), True)
 
     def _publishQuestion(self):
-        self._questions.random().publish(self._client)
+        q = self._questions.random()
+        self._client.send(q.toDict(), True)
         self._lastQuestionSend = util.mtime()
 
     def isLeader(self):
@@ -53,16 +58,19 @@ class Leader:
         self._lastHeartbeatSeen = util.mtime()
 
     def dispatchAnswer(self, msg):
+        if (not self.isLeader() or self._client.activeQuestion == None):
+            return
+
         activeQuestionId = int(self._client.activeQuestion.getQuestionId())
         answerQuestionId = int(msg.getMeta("questionId"))
 
-        if (answerQuestionId == activeQuestionId and self.isLeader()):
-            self._collectedAnswers[msg.getMeta("username")] = msg.getMeta("answer")
+        if answerQuestionId == activeQuestionId:
+                self._collectedAnswers[msg.getMeta("username")] = msg.getMeta("answer")
 
     def tick(self):
         if not self._client.hasSubscribers():
             self._lastHeartbeatSeen = util.mtime()
-            self._minPrioritySeen = sys.maxsize
+            self._resetPriority()
             return
 
         if self.isLeader():
