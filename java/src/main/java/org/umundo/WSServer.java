@@ -1,7 +1,6 @@
 package org.umundo;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import org.apache.log4j.Logger;
@@ -57,6 +56,7 @@ public class WSServer extends WebSocketServer {
     log.info("Someone connected");
     webSocket.send("{\"username\": \"" + client.getUsername() + "\" }");
     this.webSocket = webSocket;
+    client.pullScoreboard();
   }
 
   @Override

@@ -4,21 +4,24 @@ import org.apache.log4j.Logger;
 import org.umundo.QuestionFactory;
 import org.umundo.SimpleWebServer;
 import org.umundo.WSServer;
-import org.umundo.core.*;
+import org.umundo.core.Discovery;
 import org.umundo.core.Discovery.DiscoveryType;
+import org.umundo.core.Message;
+import org.umundo.core.Node;
+import org.umundo.core.SubscriberStub;
 import org.umundo.model.*;
 import org.umundo.s11n.ITypedGreeter;
 import org.umundo.s11n.ITypedReceiver;
 import org.umundo.s11n.TypedPublisher;
 import org.umundo.s11n.TypedSubscriber;
 
-import java.io.PrintStream;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
 public class Client {
 
+  // log4j logger
   private static Logger log = Logger.getLogger(Client.class.getName());
 
   private Node gameNode;
@@ -29,11 +32,15 @@ public class Client {
   private TypedSubscriber subscriber;
   private TypedPublisher publisher;
 
+  // indicates if this node is the leader right now
   private boolean leader = false;
+
+  // websocket server to communicate with the web ui
   private WSServer wsServer;
 
   private int currentQuestionId = 0;
   private ArrayList<Question> questionHistory = new ArrayList<>();
+  // map of scores: (username, score)
   private HashMap<String, Integer> scoreboard = new HashMap<>();
 
   private String username;
@@ -47,6 +54,8 @@ public class Client {
     log.info(String.format("Starting new client on port %d and %d, username: %s\n",
         port, port + 1, username));
 
+    this.scoreboard.put(username, 0);
+
     this.username = username;
     this.startUiServer(port);
 
@@ -59,6 +68,7 @@ public class Client {
     subscriber = new TypedSubscriber(QUESTION_CHANNEL);
     subscriber.setReceiver(new Receiver(this));
     publisher = new TypedPublisher(QUESTION_CHANNEL);
+    publisher.setGreeter(new Greeter());
     gameNode.addPublisher(publisher);
     gameNode.addSubscriber(subscriber);
 
@@ -74,6 +84,8 @@ public class Client {
             synchronized (self) {
               count = publisher.waitForSubscribers(0);
               if (count == 0) {
+                // due to some uMundo bug this is needed. This avoids that nodes loose the
+                // connection to each other
                 disc.remove(gameNode);
                 Thread.sleep(100);
                 disc.add(gameNode);
@@ -86,6 +98,10 @@ public class Client {
         }
       }
     }).start();
+  }
+
+  public String getUsername() {
+    return username;
   }
 
   private void startUiServer(int port) {
@@ -117,8 +133,9 @@ public class Client {
   public void run() {
     while(this.run) {
       try {
-        Thread.sleep(30000);
+        Thread.sleep(30000); // 30 seconds between two questions
         if (this.leader) {
+          // if leader: send question
           Question q;
           synchronized (self) {
             // publish a new question if client is the leader
@@ -132,8 +149,8 @@ public class Client {
         e.printStackTrace();
       }
     }
-    synchronized (self) {
 
+    synchronized (self) {
       gameNode.removePublisher(publisher);
       gameNode.removeSubscriber(subscriber);
       System.exit(0);
@@ -141,6 +158,7 @@ public class Client {
   }
 
   public void exit() {
+    // method to kindly shutdown the node
     log.info("Going to quit");
     this.run = false;
     this.leader = false;
@@ -148,10 +166,17 @@ public class Client {
   }
 
   private void receivedQuestion(Question q) {
+    // keep track of the question id in order to be able to take over as new leader without
+    // confusing ids
     currentQuestionId = q.getQuestionId();
     questionHistory.add(q);
     log.info("Received question with id " + q.getQuestionId());
     wsServer.sendQuestion(q);
+  }
+
+  public void pullScoreboard() {
+    // ui pulls the latest scoreboard if someone connects to the server
+    wsServer.sendScoreboard(new Scoreboard(this.scoreboard));
   }
 
   public void answerFromUser(Answer answer) {
@@ -168,6 +193,10 @@ public class Client {
   }
 
   private void heartbeatSender() {
+    // the leader sends a heartbeat to indicate that he is up.
+    // non-leader node check if they have received a heartbeat within the last
+    // five seconds, if not, the leader seems to be down and a leader election
+    // has to start
     final Client client = this;
     client.lastHeartbeat = System.currentTimeMillis();
     (new Thread() {
@@ -185,11 +214,12 @@ public class Client {
             } else {
               if (client.lastHeartbeat < System.currentTimeMillis() - 1000 * 5) {
                 log.info("Detected no heartbeat for three seconds, start election.");
-                // last heartbeat older than 3 secs, leader is considered to be down
+                // last heartbeat older than 5 secs, leader is considered to be down
                 run = false;
                 client.leaderElection();
               }
             }
+            // send update info to client
             client.wsServer.sendIsLeader(leader);
           } catch (InterruptedException e) {
             e.printStackTrace();
@@ -206,6 +236,11 @@ public class Client {
   }
 
   private void leaderElection() {
+    // each client has a priority (starting time as long value). A smaller value
+    // indicates a higher priority. If a message is received from a node with a
+    // higher priority, this node can be sure, that the other one will become the
+    // leader. If a node does not receive a message from a node with a higher priority
+    // within 5 seconds, the node will become the new leader.
     electionGoesOn = true;
     final Client client = this;
     (new Thread() {
@@ -245,7 +280,7 @@ public class Client {
   private void receivedPriority(Priority p) {
     if (p.getPriority() < this.priority) {
       log.info("Received a message from someone with a higher priority");
-      // someone is active who will become the master
+      // someone is active who will become the master before this node will be the leader
       electionGoesOn = false;
     }
   }
@@ -260,6 +295,7 @@ public class Client {
           if (a.getAnswer() == q.getCorrectAnswer()) {
             log.info(String.format("Answer by %s for %d was correct\n", a.getUsername(), a.getQuestionId()));
 
+            //update scores
             int lastScore = scoreboard.getOrDefault(a.getUsername(), 0);
             scoreboard.put(a.getUsername(), lastScore + 1);
 
@@ -278,6 +314,9 @@ public class Client {
   }
 
   private void receivedHeartbeat(Heartbeat h) {
+    // if a node received a heartbeat it is not the leader.
+    // corner case: two nodes think they are the leader. they will both deactivate each other
+    // and elect a new leader following the protocol.
     log.info("received heartbeat");
     this.lastHeartbeat = h.getTimestamp();
     this.leader = false;
@@ -293,11 +332,10 @@ public class Client {
   }
 
   private void receivedWelcome(Welcome w) {
-
     synchronized (self) {
       this.scoreboard.put(w.getUsername(), this.scoreboard.getOrDefault(w.getUsername(), 0));
+      this.receivedScoreboard(new Scoreboard(this.scoreboard));
     }
-
   }
 
   private static class Receiver implements ITypedReceiver {
@@ -324,7 +362,15 @@ public class Client {
     }
   }
 
-  public String getUsername() {
-    return username;
+  private class Greeter implements ITypedGreeter {
+    @Override
+    public void welcome(TypedPublisher typedPublisher, SubscriberStub subscriberStub) {
+      self.sendWelcome();
+    }
+
+    @Override
+    public void farewell(TypedPublisher typedPublisher, SubscriberStub subscriberStub) {
+      // ignored, because users may rejoin
+    }
   }
 }
