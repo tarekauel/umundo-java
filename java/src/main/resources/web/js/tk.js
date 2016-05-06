@@ -2,7 +2,7 @@ var timeToAnswer = 0;
 var questionId = 0;
 var correctAnswer = 0;
 var lastSendId = 0;
-var connection = new WebSocket('ws://localhost:' + (parseInt(location.port) + 1));
+var connection = new WebSocket('ws://' + location.hostname + ':' + (parseInt(location.port) + 1));
 var username = "";
 
 connection.onopen = function() {

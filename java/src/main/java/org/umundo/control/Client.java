@@ -318,6 +318,7 @@ public class Client {
     // corner case: two nodes think they are the leader. they will both deactivate each other
     // and elect a new leader following the protocol.
     log.info("received heartbeat");
+    this.run = true;
     this.lastHeartbeat = h.getTimestamp();
     this.leader = false;
     this.electionGoesOn = false;
