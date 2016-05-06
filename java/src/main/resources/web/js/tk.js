@@ -63,7 +63,7 @@ connection.onmessage = function(msg) {
 var btn = ['A', 'B', 'C', 'D']
 btn.forEach(function(button) {
   document.getElementById(button).addEventListener("click", function() {
-    if (lastSendId < questionId) {
+    if (lastSendId !== questionId) {
       var answer = button.charCodeAt(0) - 65;
       var answerJson = { username: username, questionId: questionId, answer: answer};
       console.log("going to send answer:");
