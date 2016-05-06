@@ -44,9 +44,9 @@ public class Client {
   private HashMap<String, Integer> scoreboard = new HashMap<>();
 
   private String username;
-  private boolean run = true;
 
   private boolean electionGoesOn = true;
+  private Discovery disc;
 
   private final Client self = this;
 
@@ -59,7 +59,7 @@ public class Client {
     this.username = username;
     this.startUiServer(port);
 
-    Discovery disc = new Discovery(DiscoveryType.MDNS);
+    disc = new Discovery(DiscoveryType.MDNS);
     gameNode = new Node();
     disc.add(gameNode);
 
@@ -72,29 +72,104 @@ public class Client {
     gameNode.addPublisher(publisher);
     gameNode.addSubscriber(subscriber);
 
+    this.checkSubscription();
     this.heartbeatSender();
+  }
 
+  private void checkSubscription() {
     (new Thread() {
       @Override
       public void run() {
-        while(self.run) {
+        while(true) {
           try {
             Thread.sleep(1000);
-            int count;
-            synchronized (self) {
-              count = publisher.waitForSubscribers(0);
-              if (count == 0) {
-                // due to some uMundo bug this is needed. This avoids that nodes loose the
-                // connection to each other
-                disc.remove(gameNode);
-                Thread.sleep(100);
-                disc.add(gameNode);
-              }
+            int count = publisher.waitForSubscribers(0);
+            if (count == 0) {
+              // due to some uMundo bug this is needed. This avoids that nodes loose the
+              // connection to each other
+              disc.remove(gameNode);
+              Thread.sleep(100);
+              disc.add(gameNode);
             }
             log.info("Number of subscribers: " + count);
           } catch (InterruptedException e) {
             e.printStackTrace();
           }
+        }
+      }
+    }).start();
+  }
+
+  private void heartbeatSender() {
+    // the leader sends a heartbeat to indicate that he is up.
+    // non-leader node check if they have received a heartbeat within the last
+    // five seconds, if not, the leader seems to be down and a leader election
+    // has to start
+    log.info("Heartbeat sender started");
+    self.lastHeartbeat = System.currentTimeMillis();
+    (new Thread() {
+      @Override
+      public void run() {
+        boolean run = true;
+        while(run) {
+          try {
+            Thread.sleep(2000);
+            if (leader) {
+              log.info("Leader sends heartbeat");
+              publisher.send(new Heartbeat().get());
+            } else {
+              if (self.lastHeartbeat < System.currentTimeMillis() - 1000 * 5) {
+                log.info("Detected no heartbeat for three seconds, start election.");
+                // last heartbeat older than 5 secs, leader is considered to be down
+                run = false;
+                self.leaderElection();
+              }
+            }
+            // send update info to client
+            self.wsServer.sendIsLeader(leader);
+          } catch (InterruptedException e) {
+            e.printStackTrace();
+          }
+        }
+      }
+    }).start();
+  }
+
+  private void leaderElection() {
+    // each client has a priority (starting time as long value). A smaller value
+    // indicates a higher priority. If a message is received from a node with a
+    // higher priority, this node can be sure, that the other one will become the
+    // leader. If a node does not receive a message from a node with a higher priority
+    // within 5 seconds, the node will become the new leader.
+    electionGoesOn = true;
+    (new Thread() {
+      @Override
+      public void run() {
+        while (electionGoesOn) {
+          try {
+            Thread.sleep(250);
+            publisher.send(new Priority(self.priority).get());
+            log.info("Send my prio");
+
+          } catch (InterruptedException e) {
+            e.printStackTrace();
+          }
+        }
+      }
+    }).start();
+
+    (new Thread() {
+      @Override
+      public void run() {
+        try {
+          Thread.sleep(5000);
+          // if election still goes on --> this is the new leader
+          self.leader = self.electionGoesOn;
+          self.electionGoesOn = false;
+          log.info("election finished and am I the leader: " + self.leader);
+          self.heartbeatSender();
+        } catch (InterruptedException e) {
+          e.printStackTrace();
         }
       }
     }).start();
@@ -131,38 +206,30 @@ public class Client {
   }
 
   public void run() {
-    while(this.run) {
+    while(true) {
       try {
         Thread.sleep(30000); // 30 seconds between two questions
         if (this.leader) {
           // if leader: send question
-          Question q;
-          synchronized (self) {
-            // publish a new question if client is the leader
-            q = QuestionFactory.getQuestion(++currentQuestionId);
-            questionHistory.add(q);
-            publisher.send(q.get());
-          }
+          // publish a new question if client is the leader
+          Question q = QuestionFactory.getQuestion(++currentQuestionId);
+          questionHistory.add(q);
+          publisher.send(q.get());
           receivedQuestion(q);
+          log.info("leader sent message");
         }
+        log.info("question thread running");
+
       } catch (InterruptedException e) {
         e.printStackTrace();
       }
-    }
-
-    synchronized (self) {
-      gameNode.removePublisher(publisher);
-      gameNode.removeSubscriber(subscriber);
-      System.exit(0);
     }
   }
 
   public void exit() {
     // method to kindly shutdown the node
     log.info("Going to quit");
-    this.run = false;
-    this.leader = false;
-    this.electionGoesOn = false;
+    System.exit(0);
   }
 
   private void receivedQuestion(Question q) {
@@ -186,95 +253,14 @@ public class Client {
       receivedAnswer(answer);
     } else {
       log.info("Send answer to leader");
-      synchronized (self) {
-        this.publisher.send(answer.get());
-      }
+      this.publisher.send(answer.get());
     }
-  }
-
-  private void heartbeatSender() {
-    // the leader sends a heartbeat to indicate that he is up.
-    // non-leader node check if they have received a heartbeat within the last
-    // five seconds, if not, the leader seems to be down and a leader election
-    // has to start
-    final Client client = this;
-    client.lastHeartbeat = System.currentTimeMillis();
-    (new Thread() {
-      @Override
-      public void run() {
-        boolean run = true;
-        while(run && self.run) {
-          try {
-            Thread.sleep(2000);
-            if (leader) {
-              synchronized (self) {
-                log.info("Leader sends heartbeat");
-                publisher.send(new Heartbeat().get());
-              }
-            } else {
-              if (client.lastHeartbeat < System.currentTimeMillis() - 1000 * 5) {
-                log.info("Detected no heartbeat for three seconds, start election.");
-                // last heartbeat older than 5 secs, leader is considered to be down
-                run = false;
-                client.leaderElection();
-              }
-            }
-            // send update info to client
-            client.wsServer.sendIsLeader(leader);
-          } catch (InterruptedException e) {
-            e.printStackTrace();
-          }
-        }
-      }
-    }).start();
   }
 
   private void sendWelcome() {
     Welcome w = new Welcome(this.getUsername());
     this.receivedWelcome(w);
     publisher.send(w.get());
-  }
-
-  private void leaderElection() {
-    // each client has a priority (starting time as long value). A smaller value
-    // indicates a higher priority. If a message is received from a node with a
-    // higher priority, this node can be sure, that the other one will become the
-    // leader. If a node does not receive a message from a node with a higher priority
-    // within 5 seconds, the node will become the new leader.
-    electionGoesOn = true;
-    final Client client = this;
-    (new Thread() {
-      @Override
-      public void run() {
-        while (electionGoesOn && self.run) {
-          try {
-            Thread.sleep(250);
-            synchronized (self) {
-              publisher.send(new Priority(client.priority).get());
-              log.info("Send my prio");
-            }
-          } catch (InterruptedException e) {
-            e.printStackTrace();
-          }
-        }
-      }
-    }).start();
-
-    (new Thread() {
-      @Override
-      public void run() {
-        try {
-          Thread.sleep(5000);
-          // if election still goes on --> this is the new leader
-          client.leader = client.electionGoesOn;
-          client.electionGoesOn = false;
-          log.info("election finished and am I the leader: " + client.leader);
-          client.heartbeatSender();
-        } catch (InterruptedException e) {
-          e.printStackTrace();
-        }
-      }
-    }).start();
   }
 
   private void receivedPriority(Priority p) {
@@ -288,27 +274,25 @@ public class Client {
   private void receivedAnswer(Answer a) {
     if (this.leader) {
       log.info(String.format("Received answer by %s for %d\n", a.getUsername(), a.getQuestionId()));
-      synchronized (self) {
-        if (a.getQuestionId() == currentQuestionId) {
-          // is latest question
-          Question q = questionHistory.get(questionHistory.size() - 1);
-          if (a.getAnswer() == q.getCorrectAnswer()) {
-            log.info(String.format("Answer by %s for %d was correct\n", a.getUsername(), a.getQuestionId()));
+      if (a.getQuestionId() == currentQuestionId) {
+        // is latest question
+        Question q = questionHistory.get(questionHistory.size() - 1);
+        if (a.getAnswer() == q.getCorrectAnswer()) {
+          log.info(String.format("Answer by %s for %d was correct\n", a.getUsername(), a.getQuestionId()));
 
-            //update scores
-            int lastScore = scoreboard.getOrDefault(a.getUsername(), 0);
-            scoreboard.put(a.getUsername(), lastScore + 1);
+          //update scores
+          int lastScore = scoreboard.getOrDefault(a.getUsername(), 0);
+          scoreboard.put(a.getUsername(), lastScore + 1);
 
-            Scoreboard sb = new Scoreboard(scoreboard);
-            publisher.send(sb.get());
-            receivedScoreboard(sb);
-          } else {
-            log.info(String.format("Answer by %s for %d was wrong\n", a.getUsername(), a.getQuestionId()));
-          }
+          Scoreboard sb = new Scoreboard(scoreboard);
+          publisher.send(sb.get());
+          receivedScoreboard(sb);
         } else {
-          // question is outdated
-          log.info(String.format("Answer by %s was too late\n", a.getUsername()));
+          log.info(String.format("Answer by %s for %d was wrong\n", a.getUsername(), a.getQuestionId()));
         }
+      } else {
+        // question is outdated
+        log.info(String.format("Answer by %s was too late\n", a.getUsername()));
       }
     }
   }
@@ -318,25 +302,20 @@ public class Client {
     // corner case: two nodes think they are the leader. they will both deactivate each other
     // and elect a new leader following the protocol.
     log.info("received heartbeat");
-    this.run = true;
     this.lastHeartbeat = h.getTimestamp();
     this.leader = false;
     this.electionGoesOn = false;
   }
 
   private void receivedScoreboard(Scoreboard scoreboard) {
-    synchronized (self) {
-      this.scoreboard = scoreboard.getScores();
-    }
+    this.scoreboard = scoreboard.getScores();
     log.info("Received latest scoreboard");
     wsServer.sendScoreboard(scoreboard);
   }
 
   private void receivedWelcome(Welcome w) {
-    synchronized (self) {
-      this.scoreboard.put(w.getUsername(), this.scoreboard.getOrDefault(w.getUsername(), 0));
-      this.receivedScoreboard(new Scoreboard(this.scoreboard));
-    }
+    this.scoreboard.put(w.getUsername(), this.scoreboard.getOrDefault(w.getUsername(), 0));
+    this.receivedScoreboard(new Scoreboard(this.scoreboard));
   }
 
   private static class Receiver implements ITypedReceiver {
